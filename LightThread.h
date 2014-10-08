@@ -1,9 +1,14 @@
 #include <thread>
 #include <mutex>
 #include <queue>
+#include <set>
+#include <condition_variable>
 static std::mutex mtx;
 
+
 static std::queue<void*> threads;
+
+
 class Thread {
 public:
 	std::thread thread;
@@ -56,3 +61,65 @@ static void SubmitWork(const std::function<void()>& item) {
 
 }
 
+
+class TimerEvent {
+public:
+	std::function<void()> functor;
+	size_t timeout;
+	bool operator<(const TimerEvent& other) const {
+		return other.timeout<timeout;
+	}
+};
+
+class TimerPool {
+public:
+	std::thread thread;
+	std::set<TimerEvent> events;
+	std::mutex mtx;
+	std::condition_variable c;
+
+	TimerPool() {
+		thread = std::thread([=](){
+			while(true) {
+				{
+					std::lock_guard<std::mutex> l(mtx);
+					while(!events.empty()) {
+						std::vector<TimerEvent> currentEvents;
+						size_t ctimeout = events.begin()->timeout;
+						while(true) {
+							if(events.empty()) {
+								break;
+							}
+
+							if(events.begin()->timeout == ctimeout) {
+								//Add to list
+								currentEvents.push_back(*events.begin());
+								events.erase(events.begin());
+							}else {
+								break;
+							}
+						}
+						std::this_thread::sleep_for(std::chrono::milliseconds(ctimeout));
+						for(auto i = currentEvents.begin(); i != currentEvents.end();i++) {
+							SubmitWork(i->functor);
+						}
+					}
+
+				}
+				std::mutex mx;
+				std::unique_lock<std::mutex> ml(mx);
+				c.wait(ml);
+
+			}
+		});
+	}
+};
+static TimerPool timerPool;
+static void CreateTimer(const std::function<void()>& callback, size_t timeout) {
+	std::lock_guard<std::mutex> mg(timerPool.mtx);
+	TimerEvent evt;
+	evt.functor = callback;
+	evt.timeout = timeout;
+	timerPool.events.insert(evt);
+	timerPool.c.notify_one();
+}
