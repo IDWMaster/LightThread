@@ -7,7 +7,7 @@ EXECUTABLE=testApp
 G++=g++
 all: $(SOURCES) $(EXECUTABLE)
 $(EXECUTABLE): $(OBJECTS)
-	g++ --std=c++0x -g $(OBJECTS) $(LDFLAGS) -Wl,-rpath . -o $@
+	g++ --std=c++0x -pthread -g $(OBJECTS) $(LDFLAGS) -Wl,-rpath . -o $@
 .c.o:
 	gcc -g $(CFLAGS) $< -o $@
 .cpp.o:

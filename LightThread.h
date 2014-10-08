@@ -67,7 +67,7 @@ public:
 	std::function<void()> functor;
 	size_t timeout;
 	bool operator<(const TimerEvent& other) const {
-		return other.timeout<timeout;
+		return other.timeout>timeout;
 	}
 };
 
