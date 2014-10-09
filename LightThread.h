@@ -87,7 +87,7 @@ public:
 			while(true) {
 				{
 					{
-					std::lock_guard<std::mutex> l(mtx);
+					std::unique_lock<std::mutex> l(mtx);
 					while(!events.empty()) {
 						std::vector<TimerEvent> currentEvents;
 						size_t ctimeout = events.begin()->timeout;
@@ -104,7 +104,7 @@ public:
 								break;
 							}
 						}
-
+						l.unlock();
 						std::this_thread::sleep_for(std::chrono::milliseconds(ctimeout));
 						for(auto i = currentEvents.begin(); i != currentEvents.end();i++) {
 							if(*(i->cancellationToken)) {
