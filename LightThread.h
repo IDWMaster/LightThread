@@ -86,6 +86,7 @@ public:
 		thread = std::thread([=](){
 			while(true) {
 				{
+					{
 					std::lock_guard<std::mutex> l(mtx);
 					while(!events.empty()) {
 						std::vector<TimerEvent> currentEvents;
@@ -103,6 +104,7 @@ public:
 								break;
 							}
 						}
+
 						std::this_thread::sleep_for(std::chrono::milliseconds(ctimeout));
 						for(auto i = currentEvents.begin(); i != currentEvents.end();i++) {
 							if(*(i->cancellationToken)) {
@@ -112,6 +114,7 @@ public:
 						}
 					}
 
+				}
 				}
 				std::mutex mx;
 				std::unique_lock<std::mutex> ml(mx);
