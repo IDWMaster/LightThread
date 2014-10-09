@@ -112,6 +112,7 @@ public:
 							}
 							delete i->cancellationToken;
 						}
+						l.lock();
 					}
 
 				}
