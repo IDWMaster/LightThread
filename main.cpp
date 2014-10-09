@@ -14,7 +14,8 @@ int main(int argc, char** argv) {
 	std::function<void()>* tester = new std::function<void()>();
 	*tester = [=](){
 		printf("EXEC\n");
-		CreateTimer(*tester,20);
+
+		SubmitWork([=](){CreateTimer(*tester,20);});
 	};
 	(*tester)();
 	sleep(-1);

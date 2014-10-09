@@ -26,12 +26,12 @@ public:
 					threads.push(this);
 					}
 				}
-			if(!first) {
+			//if(!first) {
 
 
 				std::unique_lock<std::mutex> l(mtx);
 			evt.wait(l);
-			}
+			//}
 			//It is the caller's responsibility to remove us from the list of available threads
 			first = false;
 			work();
