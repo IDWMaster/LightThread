@@ -1,7 +1,7 @@
 #include "LightThread.h"
 #include <iostream>
 #include <unistd.h>
-
+ 
 int main(int argc, char** argv) {
 	CreateTimer([=](){
 		std::cout<<"This should execute after 200 milliseconds\n";

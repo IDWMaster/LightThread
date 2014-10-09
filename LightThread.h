@@ -66,6 +66,7 @@ class TimerEvent {
 public:
 	std::function<void()> functor;
 	size_t timeout;
+	bool* cancellationToken;
 	bool operator<(const TimerEvent& other) const {
 		return other.timeout>timeout;
 	}
@@ -101,7 +102,10 @@ public:
 						}
 						std::this_thread::sleep_for(std::chrono::milliseconds(ctimeout));
 						for(auto i = currentEvents.begin(); i != currentEvents.end();i++) {
+							if(*(i->cancellationToken)) {
 							SubmitWork(i->functor);
+							}
+							delete i->cancellationToken;
 						}
 					}
 
@@ -115,11 +119,13 @@ public:
 	}
 };
 static TimerPool timerPool;
-static void CreateTimer(const std::function<void()>& callback, size_t timeout) {
+static bool* CreateTimer(const std::function<void()>& callback, size_t timeout) {
 	std::lock_guard<std::mutex> mg(timerPool.mtx);
 	TimerEvent evt;
 	evt.functor = callback;
 	evt.timeout = timeout;
+	evt.cancellationToken = new bool(true);
 	timerPool.events.insert(evt);
 	timerPool.c.notify_one();
+	return evt.cancellationToken;
 }
