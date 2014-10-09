@@ -120,12 +120,15 @@ public:
 };
 static TimerPool timerPool;
 static bool* CreateTimer(const std::function<void()>& callback, size_t timeout) {
-	std::lock_guard<std::mutex> mg(timerPool.mtx);
+
 	TimerEvent evt;
 	evt.functor = callback;
 	evt.timeout = timeout;
 	evt.cancellationToken = new bool(true);
+	{
+	std::lock_guard<std::mutex> mg(timerPool.mtx);
 	timerPool.events.insert(evt);
+	}
 	timerPool.c.notify_one();
 	return evt.cancellationToken;
 }
