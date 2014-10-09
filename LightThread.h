@@ -15,7 +15,9 @@ public:
 	std::mutex mtx;
 	std::condition_variable evt;
 	std::function<void()> work;
+	bool hasWork;
 	Thread() {
+		hasWork = false;
 		thread = std::thread([=](){
 			bool first = true;
 			while(true) {
@@ -26,15 +28,14 @@ public:
 					threads.push(this);
 					}
 				}
-			//if(!first) {
-
-
+			if(!hasWork) {
 				std::unique_lock<std::mutex> l(mtx);
 			evt.wait(l);
-			//}
+			}
 			//It is the caller's responsibility to remove us from the list of available threads
 			first = false;
 			work();
+			hasWork = false;
 			//Free the lambda by swapping it out
 			work = std::function<void()>();
 			}
@@ -50,11 +51,13 @@ static void SubmitWork(const std::function<void()>& item) {
 	if(threads.empty()) {
 		auto bot = new Thread();
 		bot->work = item;
+		bot->hasWork = true;
 		bot->evt.notify_one();
 	}else {
 		auto bot = ((Thread*)threads.front());
 		threads.pop();
 		bot->work = item;
+		bot->hasWork = true;
 		bot->evt.notify_one();
 
 	}
