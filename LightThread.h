@@ -70,8 +70,12 @@ public:
 	std::function<void()> functor;
 	size_t timeout;
 	bool* cancellationToken;
+	TimerEvent* next;
 	bool operator<(const TimerEvent& other) const {
 		return other.timeout>timeout;
+	}
+	TimerEvent() {
+		next = 0;
 	}
 };
 
@@ -90,27 +94,40 @@ public:
 					std::unique_lock<std::mutex> l(mtx);
 					while(!events.empty()) {
 						std::vector<TimerEvent> currentEvents;
-						size_t ctimeout = events.begin()->timeout;
+						TimerEvent cevt = *events.begin();
+						size_t ctimeout = cevt.timeout;
 						while(true) {
-							if(events.empty()) {
+							currentEvents.push_back(cevt);
+							if(cevt.next == 0) {
 								break;
 							}
-
-							if(events.begin()->timeout == ctimeout) {
-								//Add to list
-								currentEvents.push_back(*events.begin());
-								events.erase(events.begin());
-							}else {
-								break;
-							}
+							TimerEvent* ptr = cevt.next;
+							cevt = *ptr;
+							delete ptr;
 						}
+						events.erase(events.begin());
 						l.unlock();
-						std::this_thread::sleep_for(std::chrono::milliseconds(ctimeout));
+						auto start = std::chrono::steady_clock::now();
+
+						std::mutex mx;
+						std::unique_lock<std::mutex> ml(mx);
+						if(c.wait_for(ml,std::chrono::milliseconds(ctimeout)) == std::cv_status::timeout) {
+
+
 						for(auto i = currentEvents.begin(); i != currentEvents.end();i++) {
 							if(*(i->cancellationToken)) {
 							SubmitWork(i->functor);
 							}
 							delete i->cancellationToken;
+						}
+						}else {
+							auto end = std::chrono::steady_clock::now();
+							auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
+							for(auto i = currentEvents.begin();i!= currentEvents.end();i++) {
+								i->timeout-=milliseconds;
+								events.insert(*i);
+							}
+							printf("Interrupt\n");
 						}
 						l.lock();
 					}
@@ -134,8 +151,20 @@ static bool* CreateTimer(const std::function<void()>& callback, size_t timeout) 
 	evt.cancellationToken = new bool(true);
 	{
 	std::lock_guard<std::mutex> mg(timerPool.mtx);
+	if(timerPool.events.find(evt) == timerPool.events.end()) {
 	timerPool.events.insert(evt);
+	}else {
+		TimerEvent found = *timerPool.events.find(evt);
+		evt.next = found.next;
+		found.next = new TimerEvent(evt);
+		timerPool.events.erase(found);
+		timerPool.events.insert(found);
+	}
 	timerPool.c.notify_one();
 	}
 	return evt.cancellationToken;
+}
+static void CancelTimer(bool* cancellationToken) {
+	*cancellationToken = false;
+	timerPool.c.notify_one();
 }
