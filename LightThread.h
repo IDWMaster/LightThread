@@ -1,3 +1,6 @@
+#ifndef LIGHT_THREAD
+#define LIGHT_THREAD
+
 #include <thread>
 #include <mutex>
 #include <queue>
@@ -170,3 +173,4 @@ static void CancelTimer(bool* cancellationToken) {
 	*cancellationToken = false;
 	timerPool.c.notify_one();
 }
+#endif
