@@ -85,7 +85,17 @@ public:
 	std::set<TimerEvent> events;
 	std::mutex mtx;
 	std::condition_variable c;
-
+	void Insert(TimerEvent& evt) {
+		if(events.find(evt) == events.end()) {
+			events.insert(evt);
+			}else {
+				TimerEvent found = *events.find(evt);
+				evt.next = found.next;
+				found.next = new TimerEvent(evt);
+				events.erase(found);
+				events.insert(found);
+			}
+	}
 	TimerPool() {
 		thread = std::thread([=](){
 			while(true) {
@@ -151,15 +161,7 @@ static bool* CreateTimer(const std::function<void()>& callback, size_t timeout) 
 	evt.cancellationToken = new bool(true);
 	{
 	std::lock_guard<std::mutex> mg(timerPool.mtx);
-	if(timerPool.events.find(evt) == timerPool.events.end()) {
-	timerPool.events.insert(evt);
-	}else {
-		TimerEvent found = *timerPool.events.find(evt);
-		evt.next = found.next;
-		found.next = new TimerEvent(evt);
-		timerPool.events.erase(found);
-		timerPool.events.insert(found);
-	}
+	timerPool.Insert(evt);
 	timerPool.c.notify_one();
 	}
 	return evt.cancellationToken;
