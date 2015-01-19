@@ -173,4 +173,32 @@ static void CancelTimer(bool* cancellationToken) {
 	*cancellationToken = false;
 	timerPool.c.notify_one();
 }
+
+
+
+
+
+class Event {
+public:
+	std::mutex mtx;
+	bool triggered;
+	std::condition_variable evt_int;
+	Event() {
+		triggered = false;
+	}
+	void signal() {
+		std::unique_lock<std::mutex> l(mtx);
+		triggered = true;
+		evt_int.notify_all();
+	}
+	void wait() {
+		std::unique_lock<std::mutex> l(mtx);
+		while(!triggered) {
+		evt_int.wait(l);
+		}
+		triggered = false;
+	}
+};
+
+
 #endif
