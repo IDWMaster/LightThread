@@ -140,7 +140,7 @@ public:
 								i->timeout-=milliseconds;
 								events.insert(*i);
 							}
-							printf("Interrupt\n");
+							//printf("Interrupt\n");
 						}
 						l.lock();
 					}
@@ -199,6 +199,47 @@ public:
 		triggered = false;
 	}
 };
+
+
+//Retries something until it succeeds.
+template<typename F, typename Y>
+static void RetryOperation(const F& functor, size_t retryMS, size_t retryCount, const Y& onFailure) {
+
+	std::function<void()>* fptr = new std::function<void()>();
+	bool** retryTimer = new bool*();
+	size_t* count = new size_t(retryCount);
+	auto cleanup = [=](){
+		delete retryTimer;
+		delete fptr;
+		delete count;
+	};
+	*fptr = [=](){
+		bool abrt = false;
+		auto cancel = [&](){
+			if(*retryTimer) {
+				CancelTimer(*retryTimer);
+			}
+			abrt = true;
+
+		};
+
+		functor(cancel);
+		if(abrt) {
+			cleanup();
+			return;
+		}
+		if(*count == 0) {
+			cleanup();
+			onFailure();
+		}else {
+			(*count)--;
+			*retryTimer = CreateTimer(*fptr,retryMS);
+		}
+	};
+	(*fptr)();
+
+
+}
 
 
 #endif

@@ -22,6 +22,15 @@ int main(int argc, char** argv) {
 	a.wait();
 	printf("This should trigger after the first timer expires\n");
 
+	int i = 3;
+	RetryOperation([&](const std::function<void()> successNtfy){
+		i--;
+		printf("%i\n",i);
+		if(i == 0) {
+			printf("DONE\n");
+			successNtfy();
+		}
+	},200,50,[=](){});
 
 	a.wait();
 	printf("This should NEVER trigger\n");
