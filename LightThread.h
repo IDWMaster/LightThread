@@ -241,5 +241,53 @@ static void RetryOperation(const F& functor, size_t retryMS, size_t retryCount, 
 
 }
 
+//A simple, easy-to-use "virtual stack"-based memory allocator for short-lived objects
+//An advantage to this allocator is that it works like a safer version of alloca,
+//and can grow dynamically if necessary.
+class SafeStack {
+public:
+	unsigned char* start;
+	unsigned char* ptr;
+	size_t sz;
+	SafeStack(size_t defaultSize) {
+		start = (unsigned char*)malloc(defaultSize);
+		ptr = start;
+		sz = defaultSize;
+	}
+	void* Allocate(size_t bytes, size_t& methodStack) {
+		ptr+=bytes;
+		size_t a = (size_t)ptr;
+		size_t b = (size_t)start;
+		size_t dif = a-b;
+		while(dif>sz) {
+			sz*=2;
+			start = (unsigned char*)realloc(start,sz);
+			ptr = start+dif;
+		}
+		methodStack+=bytes;
+		return ptr;
+	}
+	void Free(const size_t& methodStack) {
+		ptr-=methodStack;
+	}
+	~SafeStack() {
+		delete ptr;
+	}
+};
+class SafeStack_Allocator {
+public:
+	SafeStack* ptr;
+	size_t method;
+	SafeStack_Allocator(SafeStack& stack) {
+		ptr = &stack;
+		method = 0;
+	}
+	void* Allocate(const size_t& sz) {
+		return ptr->Allocate(sz,method);
+	}
+	~SafeStack_Allocator() {
+		ptr->Free(method);
+	}
+};
 
 #endif
