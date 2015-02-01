@@ -140,6 +140,7 @@ public:
 								break;
 							}
 							std::shared_ptr<TimerEvent> ptr = cevt->next;
+							cevt->next = 0;
 							cevt = ptr;
 						}
 						events.erase(events.begin());
@@ -149,6 +150,9 @@ public:
 
 						std::mutex mx;
 						std::unique_lock<std::mutex> ml(mx);
+						if(offset>ctimeout) {
+							offset = 0;
+						}
 						if(c.wait_for(ml,std::chrono::milliseconds(ctimeout-offset)) == std::cv_status::timeout) {
 
 
@@ -158,12 +162,12 @@ public:
 							}
 						}
 						}else {
+							this->mtx.lock();
 							for(auto i = currentEvents.begin();i != currentEvents.end(); i++) {
 								Insert(*i);
 							}
 							auto end = std::chrono::steady_clock::now();
 							auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
-							this->mtx.lock();
 							offset = this->offset;
 							this->offset+=milliseconds;
 							this->mtx.unlock();
@@ -229,42 +233,35 @@ public:
 };
 
 
+class RetryOp {
+public:
+
+	std::function<void()> retrydgate;
+	std::function<void()> cancel;
+	size_t counter;
+
+};
+
 //Retries something until it succeeds.
 template<typename F, typename Y>
 static void RetryOperation(const F& functor, size_t retryMS, size_t retryCount, const Y& onFailure) {
+	std::shared_ptr<RetryOp> data = std::make_shared<RetryOp>();
+	data->counter = retryCount;
+	data->cancel = [=]() {
+		data->cancel = [=](){};
+		data->retrydgate = [=](){};
 
-	std::function<void()>* fptr = new std::function<void()>();
-	std::shared_ptr<TimerEvent>* retryTimer = new std::shared_ptr<TimerEvent>();
-	size_t* count = new size_t(retryCount);
-	auto cleanup = [=](){
-		delete retryTimer;
-		delete fptr;
-		delete count;
 	};
-	*fptr = [=](){
-		bool abrt = false;
-		auto cancel = [&](){
-			if(*retryTimer) {
-				CancelTimer(*retryTimer);
-			}
-			abrt = true;
-
-		};
-
-		functor(cancel);
-		if(abrt) {
-			cleanup();
-			return;
-		}
-		if(*count == 0) {
-			cleanup();
-			onFailure();
+	data->retrydgate = [=](){
+		functor(data->cancel);
+		if(data->counter) {
+			data->counter--;
+			CreateTimer(data->retrydgate,retryMS);
 		}else {
-			(*count)--;
-			*retryTimer = CreateTimer(*fptr,retryMS);
+			onFailure();
 		}
 	};
-	(*fptr)();
+	data->retrydgate();
 
 
 }

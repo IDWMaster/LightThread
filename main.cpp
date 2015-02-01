@@ -15,6 +15,7 @@ int main(int argc, char** argv) {
 	CreateTimer([=](){std::cout<<"200 milliseconds\n";
 	CreateTimer([=](){std::cout<<"400 milliseconds\n";},200);
 	},200);
+	//TODO: Something with RetryOperation screws stuff up
 	RetryOperation([=](std::function<void()> success){
 		counter--;
 			if(counter == 0) {
