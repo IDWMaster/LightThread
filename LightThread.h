@@ -6,6 +6,7 @@
 #include <queue>
 #include <set>
 #include <condition_variable>
+#include <memory>
 static std::mutex mtx;
 
 
@@ -71,9 +72,9 @@ static void SubmitWork(const std::function<void()>& item) {
 class TimerEvent {
 public:
 	std::function<void()> functor;
-	size_t timeout;
-	bool* cancellationToken;
-	TimerEvent* next;
+	uint64_t timeout;
+	bool cancellationToken;
+	std::shared_ptr<TimerEvent> next;
 	bool operator<(const TimerEvent& other) const {
 		return other.timeout>timeout;
 	}
@@ -81,65 +82,92 @@ public:
 		next = 0;
 	}
 };
+template<typename T>
+class shared_ref {
+public:
+	std::shared_ptr<T> val;
+	shared_ref(const std::shared_ptr<T>& obj) {
+		val = obj;
+	}
+	T& operator*() const {
+		return *val;
+	}
+	T* operator->() const {
+		return val.get();
+	}
+	operator std::shared_ptr<T>() const {
+		return val;
+	}
+	bool operator<(const shared_ref<T>& other) const {
+		return (*val)<(*other.val);
+	}
+};
 
 class TimerPool {
 public:
 	std::thread thread;
-	std::set<TimerEvent> events;
+	std::set<shared_ref<TimerEvent>> events;
 	std::mutex mtx;
 	std::condition_variable c;
-	void Insert(TimerEvent& evt) {
+	//Global time correction
+	uint64_t offset;
+	void Insert(std::shared_ptr<TimerEvent> evt) {
+		evt->timeout += offset;
 		if(events.find(evt) == events.end()) {
 			events.insert(evt);
 			}else {
-				TimerEvent found = *events.find(evt);
-				evt.next = found.next;
-				found.next = new TimerEvent(evt);
+				std::shared_ptr<TimerEvent> found = *events.find(evt);
 				events.erase(found);
+				evt->next = found->next;
+				found->next = evt;
 				events.insert(found);
 			}
 	}
 	TimerPool() {
+		offset = 0;
 		thread = std::thread([=](){
 			while(true) {
 				{
 					{
 					std::unique_lock<std::mutex> l(mtx);
 					while(!events.empty()) {
-						std::vector<TimerEvent> currentEvents;
-						TimerEvent cevt = *events.begin();
-						size_t ctimeout = cevt.timeout;
+						std::vector<std::shared_ptr<TimerEvent>> currentEvents;
+						std::shared_ptr<TimerEvent> cevt = *events.begin();
+						uint64_t ctimeout = cevt->timeout;
 						while(true) {
 							currentEvents.push_back(cevt);
-							if(cevt.next == 0) {
+							if(cevt->next == 0) {
 								break;
 							}
-							TimerEvent* ptr = cevt.next;
-							cevt = *ptr;
-							delete ptr;
+							std::shared_ptr<TimerEvent> ptr = cevt->next;
+							cevt = ptr;
 						}
 						events.erase(events.begin());
+						uint64_t offset = this->offset;
 						l.unlock();
 						auto start = std::chrono::steady_clock::now();
 
 						std::mutex mx;
 						std::unique_lock<std::mutex> ml(mx);
-						if(c.wait_for(ml,std::chrono::milliseconds(ctimeout)) == std::cv_status::timeout) {
+						if(c.wait_for(ml,std::chrono::milliseconds(ctimeout-offset)) == std::cv_status::timeout) {
 
 
 						for(auto i = currentEvents.begin(); i != currentEvents.end();i++) {
-							if(*(i->cancellationToken)) {
-							SubmitWork(i->functor);
+							if((*i)->cancellationToken) {
+							SubmitWork((*i)->functor);
 							}
-							delete i->cancellationToken;
 						}
 						}else {
+							for(auto i = currentEvents.begin();i != currentEvents.end(); i++) {
+								Insert(*i);
+							}
 							auto end = std::chrono::steady_clock::now();
 							auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
-							for(auto i = currentEvents.begin();i!= currentEvents.end();i++) {
-								i->timeout-=milliseconds;
-								events.insert(*i);
-							}
+							this->mtx.lock();
+							offset = this->offset;
+							this->offset+=milliseconds;
+							this->mtx.unlock();
+
 							//printf("Interrupt\n");
 						}
 						l.lock();
@@ -156,21 +184,21 @@ public:
 	}
 };
 static TimerPool timerPool;
-static bool* CreateTimer(const std::function<void()>& callback, size_t timeout) {
+static std::shared_ptr<TimerEvent> CreateTimer(const std::function<void()>& callback, size_t timeout) {
 
-	TimerEvent evt;
-	evt.functor = callback;
-	evt.timeout = timeout;
-	evt.cancellationToken = new bool(true);
+	std::shared_ptr<TimerEvent> evt = std::make_shared<TimerEvent>();
+	evt->functor = callback;
+	evt->timeout = timeout;
+	evt->cancellationToken = true;
 	{
 	std::lock_guard<std::mutex> mg(timerPool.mtx);
 	timerPool.Insert(evt);
 	timerPool.c.notify_one();
 	}
-	return evt.cancellationToken;
+	return evt;
 }
-static void CancelTimer(bool* cancellationToken) {
-	*cancellationToken = false;
+static void CancelTimer(std::shared_ptr<TimerEvent> timer) {
+	timer->cancellationToken = false;
 	timerPool.c.notify_one();
 }
 
@@ -206,7 +234,7 @@ template<typename F, typename Y>
 static void RetryOperation(const F& functor, size_t retryMS, size_t retryCount, const Y& onFailure) {
 
 	std::function<void()>* fptr = new std::function<void()>();
-	bool** retryTimer = new bool*();
+	std::shared_ptr<TimerEvent>* retryTimer = new std::shared_ptr<TimerEvent>();
 	size_t* count = new size_t(retryCount);
 	auto cleanup = [=](){
 		delete retryTimer;
