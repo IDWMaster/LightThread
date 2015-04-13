@@ -109,24 +109,18 @@ public:
 	std::set<shared_ref<TimerEvent>> events;
 	std::mutex mtx;
 	std::condition_variable c;
-	//Global time correction
-	uint64_t offset;
 	void Insert(std::shared_ptr<TimerEvent> evt) {
-		evt->timeout += offset;
 		if(events.find(evt) == events.end()) {
 			events.insert(evt);
 			}else {
 				std::shared_ptr<TimerEvent> found = *events.find(evt);
 				events.erase(found);
 				evt->next = found;
-				//evt->next = found->next;
-				//found->next = evt;
 				events.insert(evt);
 				printf("LL\n");
 			}
 	}
 	TimerPool() {
-		offset = 0;
 		thread = std::thread([=](){
 			while(true) {
 				{
@@ -147,19 +141,22 @@ public:
 							printf("Append\n");
 						}
 						events.erase(events.begin());
-						uint64_t offset = this->offset;
 						l.unlock();
 						auto start = std::chrono::steady_clock::now();
 
 						std::mutex mx;
 						std::unique_lock<std::mutex> ml(mx);
-						if(offset>ctimeout) {
-							printf("IERR\n");
-							offset = 0;
-						}
-						if(c.wait_for(ml,std::chrono::milliseconds(ctimeout-offset)) == std::cv_status::timeout) {
 
-
+						if(c.wait_for(ml,std::chrono::milliseconds(ctimeout)) == std::cv_status::timeout) {
+							for(auto i = events.begin();i != events.end();i++) {
+								if(ctimeout>i->val->timeout) {
+									//Execute immediately
+									i->val->timeout = 0;
+								}else {
+									//Defer execution
+									i->val->timeout-=(ctimeout);
+								}
+							}
 						for(auto i = currentEvents.begin(); i != currentEvents.end();i++) {
 							if((*i)->cancellationToken) {
 							SubmitWork((*i)->functor);
@@ -172,11 +169,17 @@ public:
 							}
 							auto end = std::chrono::steady_clock::now();
 							auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
-							offset = this->offset;
-							this->offset+=milliseconds;
+							//TODO: Subtract milliseconds from all timers
+							for(auto i = events.begin();i!= events.end();i++) {
+								if(milliseconds>i->val->timeout) {
+									i->val->timeout = 0;
+								}else {
+									i->val->timeout-=milliseconds;
+								}
+							}
 							this->mtx.unlock();
 
-							printf("Interrupt %i\n",(int)this->offset);
+
 						}
 						l.lock();
 					}
