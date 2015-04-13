@@ -118,9 +118,11 @@ public:
 			}else {
 				std::shared_ptr<TimerEvent> found = *events.find(evt);
 				events.erase(found);
-				evt->next = found->next;
-				found->next = evt;
-				events.insert(found);
+				evt->next = found;
+				//evt->next = found->next;
+				//found->next = evt;
+				events.insert(evt);
+				printf("LL\n");
 			}
 	}
 	TimerPool() {
@@ -142,6 +144,7 @@ public:
 							std::shared_ptr<TimerEvent> ptr = cevt->next;
 							cevt->next = 0;
 							cevt = ptr;
+							printf("Append\n");
 						}
 						events.erase(events.begin());
 						uint64_t offset = this->offset;
@@ -151,6 +154,7 @@ public:
 						std::mutex mx;
 						std::unique_lock<std::mutex> ml(mx);
 						if(offset>ctimeout) {
+							printf("IERR\n");
 							offset = 0;
 						}
 						if(c.wait_for(ml,std::chrono::milliseconds(ctimeout-offset)) == std::cv_status::timeout) {
@@ -172,7 +176,7 @@ public:
 							this->offset+=milliseconds;
 							this->mtx.unlock();
 
-							//printf("Interrupt\n");
+							printf("Interrupt %i\n",(int)this->offset);
 						}
 						l.lock();
 					}

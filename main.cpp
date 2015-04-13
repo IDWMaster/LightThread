@@ -10,19 +10,19 @@ int counter = 5;
 
 int main(int argc, char** argv) {
 	Event a;
-	CreateTimer([=](){std::cout<<"5 seconds\n";},5000);
+	CreateTimer([=](){std::cout<<"2 seconds\n";},2000);
 	CreateTimer([=](){std::cout<<"200 milliseconds\n";},200);
 	CreateTimer([=](){std::cout<<"200 milliseconds\n";
 	CreateTimer([=](){std::cout<<"400 milliseconds\n";},200);
 	},200);
-	//TODO: Something with RetryOperation screws stuff up
+	/*
 	RetryOperation([=](std::function<void()> success){
 		counter--;
 			if(counter == 0) {
 				success();
 			}
 			cout<<"Retry\n";
-	},1000,10,[=](){});
+	},1000,10,[=](){});*/
 	a.wait();
 	return 0;
 }
