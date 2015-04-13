@@ -117,7 +117,6 @@ public:
 				events.erase(found);
 				evt->next = found;
 				events.insert(evt);
-				printf("LL\n");
 			}
 	}
 	TimerPool() {
@@ -138,7 +137,6 @@ public:
 							std::shared_ptr<TimerEvent> ptr = cevt->next;
 							cevt->next = 0;
 							cevt = ptr;
-							printf("Append\n");
 						}
 						events.erase(events.begin());
 						l.unlock();
