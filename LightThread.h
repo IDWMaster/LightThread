@@ -7,6 +7,10 @@
 #include <set>
 #include <condition_variable>
 #include <memory>
+
+
+namespace LightThread {
+
 static std::mutex mtx;
 
 
@@ -28,7 +32,7 @@ public:
 				{
 					if(!first) {
 					//Add ourselves to the availability list
-					std::unique_lock<std::mutex> ml(::mtx);
+					std::unique_lock<std::mutex> ml(LightThread::mtx);
 					threads.push(this);
 					}
 				}
@@ -319,5 +323,5 @@ public:
 		ptr->Free(method);
 	}
 };
-
+}
 #endif
